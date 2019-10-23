@@ -22,13 +22,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
-#define L_TYPE_FONT           "fontC_Font_t"
-#define L_TYPE_RANGE          "fontC_Range_t"
-#define L_TYPE_CHARACTER      "fontC_Character_t"
+#include "fontBuilderForC.h"
 
 #define L_MAX(a, b)           (((a) >= (b)) ? (a) : (b))
 #define L_MIN(a, b)           (((a) <= (b)) ? (a) : (b))
+
+#define L_STRINGIFY(x)        #x
+#define L_TO_STRING(x)        L_STRINGIFY(x)
+
+#define L_TYPE_FONT           L_TO_STRING(FONTBUILDERFORC_TYPE_FONT)
+#define L_TYPE_RANGE          L_TO_STRING(FONTBUILDERFORC_TYPE_RANGE)
+#define L_TYPE_CHARACTER      L_TO_STRING(FONTBUILDERFORC_TYPE_CHARACTER)
+#define L_TYPE_KERNING        L_TO_STRING(FONTBUILDERFORC_TYPE_KERNING)
 
 //____________________________________________________________PRIVATE PROTOTYPES
 static void StartFont (fontCvt_Font_t *font, const char *output);
@@ -48,10 +53,15 @@ static FILE *TmpfFont; /* temporary file to store the font structure */
 static FILE *TmpfRange; /* temporary file to store the character ranges array */
 static FILE *TmpfCharacter; /* temporary file to store characters descriptors */
 static FILE *TmpfBitmap; /* temporary file to store characters bitmaps */
+static FILE *TmpfKerning; /* temporary file to store kerning information */
 
 static uint8_t Bpp; /* bit per pixel for character bitmaps */
 static uint16_t RangeIndex; /* exported character rage index */
 static uint32_t BmpArrayOffset;
+static uint16_t KerningIndex;
+
+static char SourceFname[256];
+static char HeaderFname[256];
 
 //____________________________________________________________________GLOBAL VAR
 fontCvt_Builder_t builderForC_Builder;
@@ -83,15 +93,15 @@ void builderForC_Init (void)
 static void StartFont (fontCvt_Font_t *font, const char *output)
 {
 	FILE *fHeader;
-	char sourceFname[256], headerFname[256];
 
-	snprintf (sourceFname, sizeof (sourceFname), "%s.c", output);
-	snprintf (headerFname, sizeof (headerFname), "%s.h", output);
+	snprintf (SourceFname, sizeof (SourceFname), "%s.c", output);
+	snprintf (HeaderFname, sizeof (HeaderFname), "%s.h", output);
 
-	fHeader = fopen (headerFname, "wb");
+	fHeader = fopen (HeaderFname, "wb");
 	if (fHeader)
 	{	/* i can immediatly create the header file */
-		fprintf (fHeader, "header file\n");
+		fprintf (fHeader, "#pragma once\n\n");
+		fprintf (fHeader, "extern const " L_TYPE_FONT " %s_Font;\n", output);
 		fclose (fHeader);
 	}
 
@@ -107,27 +117,34 @@ static void StartFont (fontCvt_Font_t *font, const char *output)
 		goto __errexit;
 	if ((TmpfBitmap = tmpfile ( )) == NULL)
 		goto __errexit;
-	if ((FSource = fopen (sourceFname, "wb")) == NULL)
+	if ((FSource = fopen (SourceFname, "wb")) == NULL)
+		goto __errexit;
+	if ((TmpfKerning = tmpfile ( )) == NULL)
 		goto __errexit;
 
 	Bpp = font->bpp; /* save bpp for later use */
 	RangeIndex = 0;
 	BmpArrayOffset = 0;
+	KerningIndex = 0;
 
-	fprintf (FSource, "#include \"fontC.h\"\n\n");
+	fprintf (FSource, "#include \"fontBuilderForC.h\"\n\n");
 	
-	fprintf (TmpfFont, "const " L_TYPE_FONT " fontName =\n");
+	fprintf (TmpfFont, "const " L_TYPE_FONT " %s_Font =\n", output);
 	fprintf (TmpfFont, "{\n");
 	fprintf (TmpfFont, "\t.bpp = %d,\n", font->bpp);
 	fprintf (TmpfFont, "\t.pxl_baseline_to_baseline = %d,\n", font->pxl_baseline_to_baseline);
 	fprintf (TmpfFont, "\t.pxl_max_glyph_height = %d,\n", font->pxl_max_glyph_height);
-	fprintf (TmpfFont, "\t.ranges = &FontRanges,\n");
+	fprintf (TmpfFont, "\t.ranges = FontRanges,\n");
+	fprintf (TmpfFont, "\t.bitmaps_table = FontBitmaps,\n");
 
-	fprintf (TmpfRange, "const " L_TYPE_RANGE " FontRanges[] =\n");
+	fprintf (TmpfRange, "static const " L_TYPE_RANGE " FontRanges[] =\n");
 	fprintf (TmpfRange, "{\n");
 
-	fprintf (TmpfBitmap, "const char FontBitmaps[] =\n");
+	fprintf (TmpfBitmap, "static const char FontBitmaps[] =\n");
 	fprintf (TmpfBitmap, "{\n");
+
+	fprintf (TmpfKerning, "static const " L_TYPE_KERNING " Kerning[] =\n");
+	fprintf (TmpfKerning, "{\t// Kerning informations\n");
 	return;
 
 __errexit:
@@ -146,10 +163,10 @@ static void StartRange (fontCvt_Range_t *range)
 	fprintf (TmpfRange, "\t{");
 	fprintf (TmpfRange, " .first = %d,", range->first);
 	fprintf (TmpfRange, " .num_characters = %d,", char_num);
-	fprintf (TmpfRange, " .characters = &FontCharacters%d", RangeIndex);
+	fprintf (TmpfRange, " .characters = FontCharacters%d", RangeIndex);
 	fprintf (TmpfRange, " },\n");
 
-	fprintf (TmpfCharacter, "const " L_TYPE_CHARACTER " FontCharacters%d[] =\n", RangeIndex);
+	fprintf (TmpfCharacter, "static const " L_TYPE_CHARACTER " FontCharacters%d[] =\n", RangeIndex);
 	fprintf (TmpfCharacter, "{\t// Unicode character range [0x%04X-0x%04X] (%d characters)\n", range->first, range->last, char_num);
 }
 
@@ -168,7 +185,8 @@ static void StartCharacter (fontCvt_Character_t *character)
 	/* those following two could be negative, meaning their string
 	   rappresentation could be 4 character long (es. "-123"). Thus % 4d */
 	fprintf (TmpfCharacter, " .pxl_left = % 4d,", character->pxl_left);
-	fprintf (TmpfCharacter, " .pxl_top = % 4d", character->pxl_top);
+	fprintf (TmpfCharacter, " .pxl_top = % 4d,", character->pxl_top);
+	fprintf (TmpfCharacter, " .kerning_index = % 5d", KerningIndex);
 	fprintf (TmpfCharacter, " },");
 	fprintf (TmpfCharacter, " // Unicode 0x%04X\n", character->unicode);
 
@@ -245,7 +263,12 @@ static void StartCharacter (fontCvt_Character_t *character)
 */
 static void PutKerning (fontCvt_Kerning_t *kerning)
 {
-//	printf ("kerning info: left = %04x | right = %04x     advance = %d\n", kerning->left_char, kerning->right_char, kerning->x_pxl_adjust);
+	fprintf (TmpfKerning, "\t{");
+	fprintf (TmpfKerning, ".left_ch = 0x%04X, ", kerning->left_char);
+	fprintf (TmpfKerning, ".right_ch = 0x%04X, ",  kerning->right_char);
+	fprintf (TmpfKerning, ".pxl_adjust = % 4d", kerning->x_pxl_adjust);
+	fprintf (TmpfKerning, "},\n");
+	KerningIndex++;
 }
 
 /* Function description.
@@ -273,10 +296,20 @@ static void EndRange (void)
 */
 static void EndFont (void)
 {
+	if (KerningIndex)
+	{
+		fprintf (TmpfFont, "\t.kerning = Kerning,\n");
+	}
+	else
+	{
+		fprintf (TmpfFont, "\t.kerning = NULL, // no kerning info founded\n");
+	}
+	fprintf (TmpfFont, "\t.num_kerning = %d,\n", KerningIndex);
 	fprintf (TmpfFont, "\t.num_ranges = %d,\n", RangeIndex);
 	fprintf (TmpfFont, "};\n");
 	fprintf (TmpfRange, "};\n");
 	fprintf (TmpfBitmap, "};\n");
+	fprintf (TmpfKerning, "};\n");
 
 	AllFileWrite (FSource, TmpfBitmap);
 	fprintf (FSource, "\n\n");
@@ -284,6 +317,11 @@ static void EndFont (void)
 	fprintf (FSource, "\n\n");
 	AllFileWrite (FSource, TmpfRange);
 	fprintf (FSource, "\n\n");
+	if (KerningIndex)
+	{	/* write da kerinig table only if contains data */
+		AllFileWrite (FSource, TmpfKerning);
+		fprintf (FSource, "\n\n");
+	}
 	AllFileWrite (FSource, TmpfFont);
 
 	CloseAllFile ( );
@@ -307,6 +345,8 @@ static void CloseAllFile (void)
 		fclose (TmpfCharacter);
 	if (TmpfBitmap)
 		fclose (TmpfBitmap);
+	if (TmpfKerning)
+		fclose (TmpfKerning);
 }
 
 /* Write all the source file content at the end of the destination file.
@@ -323,5 +363,5 @@ static void AllFileWrite (FILE *f_dst, FILE *f_src)
 	fseek (f_src, 0, SEEK_SET);
 
 	while ((ch = fgetc (f_src) ) != EOF)
-    	fputc (ch, f_dst);
+		fputc (ch, f_dst);
 }

@@ -194,6 +194,12 @@ int main (int argc, char *argv[])
 		fprintf (stderr, "-o with specified output destination is mandatory\n");
 	}
 
+	if (ArgIn_UnicodeRangesNum == 0)
+	{	/* you have provided no character range */
+		argsOk = false;
+		fprintf (stderr, "you must provide at least one character range (-r)\n");
+	}
+
 	if (argsOk)
 		Export ( );
 
