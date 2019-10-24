@@ -292,7 +292,9 @@ static void DoExportFont (fontCvt_Builder_t *builder, FT_Face face, UnicodeRange
 		itfc_font.bpp = ArgIn_Bpp;
 		itfc_font.pxl_baseline_to_baseline = face->size->metrics.height >> 6;
 		itfc_font.pxl_em_square = face->size->metrics.y_ppem;
-		/* ??? */
+		/* TODO ???
+		check https://www.freetype.org/freetype2/docs/tutorial/step2.html
+		and look for 'ascender' 'descender' */
 		itfc_font.pxl_max_glyph_height = (face->size->metrics.ascender - face->size->metrics.descender) >> 6;
 
 		/* this identifies the builder's export procedure start */
@@ -319,50 +321,47 @@ static void DoExportFont (fontCvt_Builder_t *builder, FT_Face face, UnicodeRange
 		{
 			FT_Error error;
 			FT_UInt glyph_idx; /* glyph index of this letter */
+			fontCvt_Character_t itfc_character;
+			char *pxlmap = NULL;
+
+			/* set default values for this glyph */
+			memset (&itfc_character, 0, sizeof (itfc_character));
+			itfc_character.unicode = letter;
 
 			glyph_idx = FT_Get_Char_Index (face, letter);
-			if (!glyph_idx)
-			{	/* undefined character code */
-				/* there is no glyph for this character code */
-				continue;
-			}
-
-			error = FT_Load_Glyph (face, /* handle to face object */
-				glyph_idx, /* glyph index */
-				FT_LOAD_DEFAULT); /* load flags */
-			if (!error)
+			if (glyph_idx)
 			{
-				FT_Render_Mode renderMode = FT_RENDER_MODE_NORMAL;
-
-				/* convert glyph to bitmap */
-				if (ArgIn_Bpp == 1)
-					renderMode = FT_RENDER_MODE_MONO;
-				error = FT_Render_Glyph (face->glyph, /* glyph slot  */
-					renderMode); /* render mode */
+				error = FT_Load_Glyph (face, /* handle to face object */
+					glyph_idx, /* glyph index */
+					FT_LOAD_DEFAULT); /* load flags */
 				if (!error)
 				{
-					FT_Bitmap *bitmap;
-					char *pxlmap;
+					FT_Render_Mode renderMode = FT_RENDER_MODE_NORMAL;
 
-					bitmap = &face->glyph->bitmap;
-					pxlmap = calloc (bitmap->width, bitmap->rows);
-					if (pxlmap)
+					/* convert glyph to bitmap */
+					if (ArgIn_Bpp == 1)
+						renderMode = FT_RENDER_MODE_MONO;
+					error = FT_Render_Glyph (face->glyph, /* glyph slot  */
+						renderMode); /* render mode */
+					if (!error)
 					{
-						fontCvt_Character_t itfc_character;
+						FT_Bitmap *bitmap;
 
-						itfc_character.unicode = letter;
-						itfc_character.pxl_left = face->glyph->bitmap_left;
-						itfc_character.pxl_top = face->glyph->bitmap_top;
-						itfc_character.bmp_pxl_width = bitmap->width;
-						itfc_character.bmp_pxl_height = bitmap->rows;
-						itfc_character.pxl_advance = face->glyph->advance.x >> 6;
-						itfc_character.bmp = pxlmap;
+						bitmap = &face->glyph->bitmap;
+						pxlmap = calloc (bitmap->width, bitmap->rows);
+						if (pxlmap)
+						{
+							itfc_character.pxl_left = face->glyph->bitmap_left;
+							itfc_character.pxl_top = face->glyph->bitmap_top;
+							itfc_character.bmp_pxl_width = bitmap->width;
+							itfc_character.bmp_pxl_height = bitmap->rows;
+							itfc_character.pxl_advance = face->glyph->advance.x >> 6;
+							itfc_character.bmp = pxlmap;
 
-						ConvertBitmap (bitmap, pxlmap);
-						/* give this character to the builder for export */
-						builder->startCharacter (&itfc_character);
-						DoExportKerinig (builder, face, letter, ranges, ranges_sz);
-						builder->endCharacter ( );
+							ConvertBitmap (bitmap, pxlmap);
+						}
+						else
+							L_PRINT_GEN_ERR;
 					}
 					else
 						L_PRINT_GEN_ERR;
@@ -371,7 +370,18 @@ static void DoExportFont (fontCvt_Builder_t *builder, FT_Face face, UnicodeRange
 					L_PRINT_GEN_ERR;
 			}
 			else
-				L_PRINT_GEN_ERR;
+			{	/* there is no glyph for this character code
+				we export an empty glpyph */
+			}
+
+			/* give this character to the builder for export. do this also for
+			unavailable glyphs */
+			builder->startCharacter (&itfc_character);
+			DoExportKerinig (builder, face, letter, ranges, ranges_sz);
+			builder->endCharacter ( );
+
+			if (pxlmap)
+				free (pxlmap);
 		}
 
 		/* we say the builder this range it's over */

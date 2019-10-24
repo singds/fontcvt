@@ -20,6 +20,7 @@
 #define FONTBUILDERFORC_H_INCLUDED
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define FONTBUILDERFORC_TYPE_FONT           fontBuilderForC_Font_t
 #define FONTBUILDERFORC_TYPE_RANGE          fontBuilderForC_Range_t
