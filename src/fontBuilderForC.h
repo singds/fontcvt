@@ -27,6 +27,9 @@
 #define FONTBUILDERFORC_TYPE_CHARACTER      fontBuilderForC_Character_t
 #define FONTBUILDERFORC_TYPE_KERNING        fontBuilderForC_Kerning_t
 
+#define FONTBUILDERFORC_BITMAPS_IN_ARRAY    0
+#define FONTBUILDERFORC_BITMAPS_IN_FILE     1
+
 typedef struct
 {
 	uint16_t bmp_offset; // bitmap offset inside the 
@@ -67,7 +70,8 @@ typedef struct
 	with rendering a new line */
 	uint8_t pxl_baseline_to_baseline;
 	uint8_t pxl_max_glyph_height;
-	const char *bitmaps_table; // byte array containing all glyphs bitmap
+	const char *bitmaps_table; // byte array containing all glyphs bitmap or binary filename
+	uint8_t bitmaps_table_storage; // bitmaps as c array or as binary file
 	const FONTBUILDERFORC_TYPE_RANGE *ranges;
 	const FONTBUILDERFORC_TYPE_KERNING *kerning; // null if no kerning info available
 	uint16_t num_kerning; // kerning array size

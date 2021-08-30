@@ -59,7 +59,7 @@ typedef struct
 
 typedef struct
 {
-	void (*startFont) (fontCvt_Font_t *font, const char *output);
+	void (*startFont) (fontCvt_Font_t *font, const char *output, const char *options);
 	void (*startRange) (fontCvt_Range_t *range);
 	void (*startCharacter) (fontCvt_Character_t *character);
 	void (*putKerning) (fontCvt_Kerning_t *kerning);

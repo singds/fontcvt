@@ -60,6 +60,8 @@ static char *ArgIn_FnameOut = NULL;
 static uint8_t ArgIn_Size = 30;
 /* export font bpp */
 static uint8_t ArgIn_Bpp = 4;
+/* builder options */
+static const char *ArgIn_BuilderOpt;
 
 
 //____________________________________________________________________GLOBAL VAR
@@ -80,7 +82,7 @@ int main (int argc, char *argv[])
 	bool argsOk = true;
 
 	/* parse command line options */
-	while ((c = getopt (argc, argv, ":b:s:r:o:h")) != -1)
+	while ((c = getopt (argc, argv, ":b:j:s:r:o:h")) != -1)
 	{
 		switch (c)
 		{
@@ -149,6 +151,13 @@ int main (int argc, char *argv[])
 			case 'o':
 			{
 				ArgIn_FnameOut = optarg;
+				break;
+			}
+
+			/* option string to be passed to the builder */
+			case 'j':
+			{
+				ArgIn_BuilderOpt = optarg;
 				break;
 			}
 
@@ -230,6 +239,12 @@ fontcvt use:\n\
 	printf ("\
 -o) Specify the output filename. (mandatory)\n");
 	printf ("\
+-j) Command separated list of options for the specific builder builder.\n\
+    Example: -j\"format=bin,binpath=S:path/to/bin/file\"\
+    C builder options:\
+      format=bin: save the bit.\
+      binpath=<path>: set the base path for the binary referenced in the font.\n");
+	printf ("\
 -h) Print this help and exit.\n");
 }
 
@@ -298,7 +313,7 @@ static void DoExportFont (fontCvt_Builder_t *builder, FT_Face face, UnicodeRange
 		itfc_font.pxl_max_glyph_height = (face->size->metrics.ascender - face->size->metrics.descender) >> 6;
 
 		/* this identifies the builder's export procedure start */
-		builder->startFont (&itfc_font, ArgIn_FnameOut);
+		builder->startFont (&itfc_font, ArgIn_FnameOut, ArgIn_BuilderOpt);
 	}
 
 	/* for all the specified ranges */

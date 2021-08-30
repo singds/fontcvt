@@ -37,7 +37,7 @@
 #define L_TYPE_KERNING        L_TO_STRING(FONTBUILDERFORC_TYPE_KERNING)
 
 //____________________________________________________________PRIVATE PROTOTYPES
-static void StartFont (fontCvt_Font_t *font, const char *output);
+static void StartFont (fontCvt_Font_t *font, const char *output, const char *options);
 static void StartRange (fontCvt_Range_t *range);
 static void StartCharacter (fontCvt_Character_t *character);
 static void PutKerning (fontCvt_Kerning_t *kerning);
@@ -56,6 +56,7 @@ static FILE *TmpfRange; /* temporary file to store the character ranges array */
 static FILE *TmpfCharacter; /* temporary file to store characters descriptors */
 static FILE *TmpfBitmap; /* temporary file to store characters bitmaps */
 static FILE *TmpfKerning; /* temporary file to store kerning information */
+static FILE *BitmapBinFile;
 
 static uint8_t Bpp; /* bit per pixel for character bitmaps */
 static uint16_t RangeIndex; /* exported character rage index */
@@ -63,6 +64,12 @@ static uint32_t BmpArrayOffset;
 static uint16_t KerningIndex;
 
 static char SourceFname[256];
+static char BitmapsBinPath[256];
+enum
+{
+	L_FORMAT_C_ARRAY,
+	L_FORMAT_BIN_FILE,
+} static OutFormat;
 
 //____________________________________________________________________GLOBAL VAR
 fontCvt_Builder_t builderForC_Builder;
@@ -91,8 +98,50 @@ void builderForC_Init (void)
     Args:
     Ret:
 */
-static void StartFont (fontCvt_Font_t *font, const char *output)
+static void StartFont (fontCvt_Font_t *font, const char *output, const char *options)
 {
+	OutFormat = L_FORMAT_C_ARRAY;
+	snprintf (BitmapsBinPath, sizeof(BitmapsBinPath), "%s.bitmap.bin", output);
+
+	// parse options
+	if (options)
+	{
+		char optionsCopy[strlen(options) + 1];
+
+		strcpy (optionsCopy, options);
+		for (char *save, *option = strtok_r (optionsCopy, ",", &save);
+		     option;
+		     option = strtok_r (NULL, ",", &save))
+		{
+			char *strEq, *strVal;
+
+			if (strEq = strstr(option, "=")) {
+				*strEq = 0;
+				strVal = strEq + 1;
+
+				if (!strcmp (option, "format"))
+				{
+					if (!strcmp (strVal, "bin"))
+						OutFormat = L_FORMAT_BIN_FILE;
+				}
+				else if (!strcmp (option, "binpath"))
+				{
+					int len = strlen (strVal);
+					char path[len + 2];
+
+					strcpy (path, strVal);
+					if (strVal[len -1] != '/')
+					{
+						path[len] = '/';
+						path[len + 1] = 0;
+					}
+
+					snprintf (BitmapsBinPath, sizeof(BitmapsBinPath), "%s%s.bitmap.bin", path, output);
+				}
+			}
+		}
+	}
+
 	printf ("exporting %s\n", output);
 	snprintf (SourceFname, sizeof (SourceFname), "%s.c", output);
 
@@ -108,8 +157,18 @@ static void StartFont (fontCvt_Font_t *font, const char *output)
 		goto __errexit;
 	if ((TmpfCharacter = tmpfile ( )) == NULL)
 		goto __errexit;
-	if ((TmpfBitmap = tmpfile ( )) == NULL)
-		goto __errexit;
+	if (OutFormat == L_FORMAT_C_ARRAY)
+	{
+		if ((TmpfBitmap = tmpfile ( )) == NULL)
+			goto __errexit;
+	} else if (OutFormat == L_FORMAT_BIN_FILE)
+	{
+		char binFile[256];
+
+		snprintf (binFile, sizeof(binFile), "%s.bitmap.bin", output);
+		if ((BitmapBinFile = fopen (binFile, "wb")) == NULL)
+			goto __errexit;
+	}
 	if ((FSource = fopen (SourceFname, "wb")) == NULL)
 		goto __errexit;
 	if ((TmpfKerning = tmpfile ( )) == NULL)
@@ -133,8 +192,11 @@ static void StartFont (fontCvt_Font_t *font, const char *output)
 	fprintf (TmpfRange, "static const " L_TYPE_RANGE " FontRanges[] =\n");
 	fprintf (TmpfRange, "{\n");
 
-	fprintf (TmpfBitmap, "static const char FontBitmaps[] =\n");
-	fprintf (TmpfBitmap, "{\n");
+	if (OutFormat == L_FORMAT_C_ARRAY)
+	{
+		fprintf (TmpfBitmap, "static const char FontBitmaps[] =\n");
+		fprintf (TmpfBitmap, "{\n");
+	}
 
 	fprintf (TmpfKerning, "static const " L_TYPE_KERNING " Kerning[] =\n");
 	fprintf (TmpfKerning, "{\t// Kerning informations\n");
@@ -185,7 +247,9 @@ static void StartCharacter (fontCvt_Character_t *character)
 
 
 	/* add this character bitmap to the array */
-	fprintf (TmpfBitmap, "\t// Unicode 0x%04X\n", character->unicode);
+	if (OutFormat == L_FORMAT_C_ARRAY)
+		fprintf (TmpfBitmap, "\t// Unicode 0x%04X\n", character->unicode);
+
 	for (uint8_t y = 0; y < character->bmp_pxl_height; y++)
 	{
 		/* destination bitmap byte wiating to be filled before write */
@@ -198,7 +262,8 @@ static void StartCharacter (fontCvt_Character_t *character)
 		char lview[256]; /* glyph picture line */
 		uint16_t lview_sz;
 
-		fprintf (TmpfBitmap, "\t");
+		if (OutFormat == L_FORMAT_C_ARRAY)
+			fprintf (TmpfBitmap, "\t");
 
 		lview_sz = 0;
 		wr_byte = 0;
@@ -230,7 +295,10 @@ static void StartCharacter (fontCvt_Character_t *character)
 			bit_pos -= Bpp; /* advance the position for the nex pixel */
 			if (bit_pos < 0)
 			{	/* wr_byte is fill of pixels */
-				fprintf (TmpfBitmap, "0x%02X, ", wr_byte);
+				if (OutFormat == L_FORMAT_C_ARRAY)
+					fprintf (TmpfBitmap, "0x%02X, ", wr_byte);
+				else if (OutFormat == L_FORMAT_BIN_FILE)
+					fputc (wr_byte, BitmapBinFile);
 				BmpArrayOffset ++;
 				/* refresh wr_byte and bit_pos */
 				wr_byte = 0;
@@ -240,14 +308,22 @@ static void StartCharacter (fontCvt_Character_t *character)
 
 		if (bit_pos != (8 - Bpp))
 		{	/* some pixel are inside wr_byte waiting to be write */
-			fprintf (TmpfBitmap, "0x%02X, ", wr_byte);
+			if (OutFormat == L_FORMAT_C_ARRAY)
+				fprintf (TmpfBitmap, "0x%02X, ", wr_byte);
+			else if (OutFormat == L_FORMAT_BIN_FILE)
+				fputc (wr_byte, BitmapBinFile);
 			BmpArrayOffset ++;
 		}
 		/* add the picture line next to the byte line */
-		fprintf (TmpfBitmap, "// %s", lview);
-		fprintf (TmpfBitmap, "\n");
+		if (OutFormat == L_FORMAT_C_ARRAY)
+		{
+			fprintf (TmpfBitmap, "// %s", lview);
+			fprintf (TmpfBitmap, "\n");
+		}
+		
 	}
-	fprintf (TmpfBitmap, "\n");
+	if (OutFormat == L_FORMAT_C_ARRAY)
+		fprintf (TmpfBitmap, "\n");
 }
 
 /* Function description.
@@ -301,10 +377,12 @@ static void EndFont (void)
 	fprintf (TmpfFont, "\t.num_ranges = %d,\n", RangeIndex);
 	fprintf (TmpfFont, "};\n");
 	fprintf (TmpfRange, "};\n");
-	fprintf (TmpfBitmap, "};\n");
+	if (OutFormat == L_FORMAT_C_ARRAY)
+		fprintf (TmpfBitmap, "};\n");
 	fprintf (TmpfKerning, "};\n");
 
-	AllFileWrite (FSource, TmpfBitmap);
+	if (OutFormat == L_FORMAT_C_ARRAY)
+		AllFileWrite (FSource, TmpfBitmap);
 	fprintf (FSource, "\n\n");
 	AllFileWrite (FSource, TmpfCharacter);
 	fprintf (FSource, "\n\n");
@@ -340,6 +418,15 @@ static void CloseAllFile (void)
 		fclose (TmpfBitmap);
 	if (TmpfKerning)
 		fclose (TmpfKerning);
+	if (BitmapBinFile)
+		fclose (BitmapBinFile);
+	FSource = NULL;
+	TmpfFont = NULL;
+	TmpfRange = NULL;
+	TmpfCharacter = NULL;
+	TmpfBitmap = NULL;
+	TmpfKerning = NULL;
+	BitmapBinFile = NULL;
 }
 
 /* Write all the source file content at the end of the destination file.
