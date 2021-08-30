@@ -108,6 +108,7 @@ static void StartFont (fontCvt_Font_t *font, const char *output, const char *opt
 	{
 		char optionsCopy[strlen(options) + 1];
 
+		// options are comma separated lists of key-value pairs (key=value)
 		strcpy (optionsCopy, options);
 		for (char *save, *option = strtok_r (optionsCopy, ",", &save);
 		     option;
@@ -187,7 +188,21 @@ static void StartFont (fontCvt_Font_t *font, const char *output, const char *opt
 	fprintf (TmpfFont, "\t.pxl_baseline_to_baseline = %d,\n", font->pxl_baseline_to_baseline);
 	fprintf (TmpfFont, "\t.pxl_max_glyph_height = %d,\n", font->pxl_max_glyph_height);
 	fprintf (TmpfFont, "\t.ranges = FontRanges,\n");
-	fprintf (TmpfFont, "\t.bitmaps_table = FontBitmaps,\n");
+	
+	{
+		const char *format = "";
+
+		if (OutFormat == L_FORMAT_C_ARRAY) {
+			fprintf (TmpfFont, "\t.bitmaps_table = FontBitmaps,\n");
+			format = "FONTBUILDERFORC_BITMAPS_IN_ARRAY";
+		}
+		else if (OutFormat == L_FORMAT_BIN_FILE) {
+			fprintf (TmpfFont, "\t.bitmaps_table = \"%s\",\n", BitmapsBinPath);
+			format = "FONTBUILDERFORC_BITMAPS_IN_FILE";
+		}
+		fprintf (TmpfFont, "\t.bitmaps_table_storage = %s,\n", format);
+	}
+	
 
 	fprintf (TmpfRange, "static const " L_TYPE_RANGE " FontRanges[] =\n");
 	fprintf (TmpfRange, "{\n");
