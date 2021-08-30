@@ -32,7 +32,7 @@
 
 typedef struct
 {
-	uint16_t bmp_offset; // bitmap offset inside the 
+	uint32_t bmp_offset; // bitmap offset inside the 
 	uint8_t bmp_pxl_width; // width of the bitmap (in pixel)
 	uint8_t bmp_pxl_height; // height of the bitmap (in pixel)
 	/* after rendering the glyph you have to advance the cursor x postion about
