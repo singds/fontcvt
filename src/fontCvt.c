@@ -25,7 +25,7 @@
 #include <unistd.h>
 
 // FreeType 2 library headers
-#include <freetype2/ft2build.h>
+#include "ft2build.h"
 #include FT_FREETYPE_H
 
 #include "builderForC.h"
@@ -240,9 +240,9 @@ fontcvt use:\n\
 -o) Specify the output filename. (mandatory)\n");
 	printf ("\
 -j) Command separated list of options for the specific builder builder.\n\
-    Example: -j\"format=bin,binpath=S:path/to/bin/file\"\
-    C builder options:\
-      format=bin: save the bit.\
+    Example: -j\"format=bin,binpath=S:path/to/bin/file\"\n\
+    C builder options:\n\
+      format=bin: save the bit.\n\
       binpath=<path>: set the base path for the binary referenced in the font.\n");
 	printf ("\
 -h) Print this help and exit.\n");

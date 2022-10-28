@@ -1,13 +1,13 @@
 # project root directory
 P_DIR_PROJECT=${PWD}
 # freetype include path
-P_DIR_FREETYPE_INC=/usr/include/freetype2
+P_DIR_FREETYPE_INC=freetype/include
 # fontCvt build directory
 P_DIR_BUILD=${P_DIR_PROJECT}/build
 # fontCvt source directory
 P_DIR_SRC=${P_DIR_PROJECT}/src
 
-P_GCC_FLAGS= -I ${P_DIR_FREETYPE_INC} -lfreetype -g
+P_GCC_FLAGS= -I ${P_DIR_FREETYPE_INC} -Lfreetype -lfreetype -g
 
 .PHONY: compile
 compile:
